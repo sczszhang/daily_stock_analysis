@@ -59,8 +59,8 @@ Go to your forked repo → `Settings` → `Secrets and variables` → `Actions` 
 |------------|------|:----:|
 | `GEMINI_API_KEY` | Get free key from [Google AI Studio](https://aistudio.google.com/) | ✅* |
 | `OPENAI_API_KEY` | OpenAI-compatible API Key (supports DeepSeek, Qwen, etc.) | Optional |
-| `OPENAI_BASE_URL` | OpenAI-compatible API endpoint (e.g., `https://api.deepseek.com/v1`) | Optional |
-| `OPENAI_MODEL` | Model name (e.g., `deepseek-chat`) | Optional |
+| `OPENAI_BASE_URL` | OpenAI-compatible API endpoint (e.g., `https://api.deepseek.com`) | Optional |
+| `OPENAI_MODEL` | Model name (e.g., `deepseek-v4-flash`) | Optional |
 
 > *Note: Configure at least one of `GEMINI_API_KEY` or `OPENAI_API_KEY`
 
@@ -103,7 +103,7 @@ Go to your forked repo → `Settings` → `Secrets and variables` → `Actions` 
 |------------|------|:----:|
 | `SINGLE_STOCK_NOTIFY` | Single stock push mode: set to `true` to push immediately after each stock analysis | Optional |
 | `REPORT_TYPE` | Report type: `simple` (concise), `full` (complete), `brief` (3-5 sentences), Docker recommended: `full` | Optional |
-| `REPORT_LANGUAGE` | Report output language: `zh` (default Chinese) / `en` (English); also updates prompt instructions, templates, notification fallbacks, and fixed copy in the Web report view | Optional |
+| `REPORT_LANGUAGE` | Report output language: `zh` (default Chinese) / `en` (English); also updates prompt instructions, templates, notification fallbacks, and fixed copy in the Web report view. The bundled `daily_analysis.yml` already maps this variable, so setting it in Actions Secrets/Variables works out of the box | Optional |
 | `REPORT_TEMPLATES_DIR` | Jinja2 template directory (relative to project root, default `templates`) | Optional |
 | `REPORT_RENDERER_ENABLED` | Enable Jinja2 template rendering (default `false`, zero regression) | Optional |
 | `REPORT_INTEGRITY_ENABLED` | Enable report integrity checks, retry or placeholder on missing fields (default `true`) | Optional |
@@ -117,6 +117,7 @@ Go to your forked repo → `Settings` → `Secrets and variables` → `Actions` 
 |------------|------|:----:|
 | `STOCK_LIST` | Watchlist codes, e.g., `600519,300750,002594` | ✅ |
 | `TAVILY_API_KEYS` | [Tavily](https://tavily.com/) Search API (for news search) | Recommended |
+| `ANSPIRE_API_KEYS` | [Anspire AI Search](https://aisearch.anspire.cn/) Specially optimized for Chinese content (effectively enhances A-share analysis) | Optional |
 | `MINIMAX_API_KEYS` | [MiniMax](https://platform.minimaxi.com/) Coding Plan Web Search (structured search results) | Optional |
 | `BOCHA_API_KEYS` | [Bocha Search](https://open.bocha.cn/) Web Search API (Chinese search optimized, supports AI summaries, multiple keys comma-separated) | Optional |
 | `SERPAPI_API_KEYS` | [SerpAPI](https://serpapi.com/baidu-search-api?utm_source=github_daily_stock_analysis) Backup search | Optional |
@@ -234,12 +235,17 @@ Default schedule: Every weekday at **18:00 (Beijing Time)** automatic execution.
 | Variable | Description | Required |
 |--------|------|:----:|
 | `TAVILY_API_KEYS` | Tavily Search API Key (recommended) | Recommended |
+| `ANSPIRE_API_KEYS` | Anspire Search API Key (effectively enhances A-share analysis) | Optional | 
 | `MINIMAX_API_KEYS` | MiniMax Coding Plan Web Search (structured results) | Optional |
 | `BOCHA_API_KEYS` | Bocha Search API Key (Chinese optimized) | Optional |
 | `BRAVE_API_KEYS` | Brave Search API Key (US stocks optimized) | Optional |
 | `SERPAPI_API_KEYS` | SerpAPI Backup search | Optional |
+| `SOCIAL_SENTIMENT_API_KEY` | Stock Sentiment API Key (Reddit / X / Polymarket, US stocks optional) | Optional |
+| `SOCIAL_SENTIMENT_API_URL` | Stock Sentiment API endpoint (default `https://api.adanos.org`) | Optional |
 | `SEARXNG_BASE_URLS` | SearXNG self-hosted instances (quota-free fallback, enable format: json in settings.yml); when empty the app auto-discovers public instances | Optional |
 | `SEARXNG_PUBLIC_INSTANCES_ENABLED` | Auto-discover public SearXNG instances from `searx.space` when `SEARXNG_BASE_URLS` is empty (default `true`) | Optional |
+
+> Behavior note: Search and social sentiment are optional enhancement services. If either service fails to initialize, the system logs a warning and degrades gracefully by skipping that stage without blocking the core analysis flow.
 
 ### Data Source Configuration
 
@@ -294,6 +300,7 @@ Default schedule: Every weekday at **18:00 (Beijing Time)** automatic execution.
 > - TickFlow behavior is capability-based rather than just key-based: limited plans can still enhance main CN indices, while plans with `CN_Equity_A` universe query support also enhance market breadth.
 > - The official quickstart documents `quotes.get(universes=["CN_Equity_A"])`, but online smoke tests confirmed two additional real-world constraints: universe access depends on plan permissions, and `quotes.get(symbols=[...])` has a per-request symbol limit.
 > - TickFlow currently returns `change_pct` / `amplitude` as ratio values; this integration normalizes them to the project's percent convention so they match AkShare / Tushare / efinance semantics.
+> - CN market review reports now use a post-market workstation layout with fixed market-temperature, index detail, sector Top tables, news catalysts, next-session plan, and risk sections. Missing data sources degrade by omitting or simplifying only the affected block.
 > - Per-stock analysis, realtime quote priority, and sector rankings fallback remain unchanged.
 
 ---
@@ -301,6 +308,11 @@ Default schedule: Every weekday at **18:00 (Beijing Time)** automatic execution.
 ## Docker Deployment
 
 The image uses prebuilt frontend assets under `/app/static` at runtime, so the running `server` container does not require the `apps/dsa-web` source tree or runtime `npm`. If WebUI cannot be opened after Docker deployment, first verify that `/app/static/index.html` exists inside the container.
+
+Official image registries:
+
+- GHCR: `ghcr.io/zhulinsen/daily_stock_analysis:<tag>`
+- Docker Hub: `<DOCKERHUB_USERNAME>/daily_stock_analysis:<tag>` (driven by the publisher's `DOCKERHUB_USERNAME` secret; the official release uses `zhulinsen/daily_stock_analysis`)
 
 ### Quick Start
 
@@ -325,6 +337,37 @@ docker-compose -f ./docker/docker-compose.yml up -d            # Start both mode
 docker-compose -f ./docker/docker-compose.yml logs -f server
 ```
 
+### Run Official Images Directly
+
+If you do not want to keep the source tree on the target machine, you can run the published image directly:
+
+```bash
+# Web/API mode
+docker pull zhulinsen/daily_stock_analysis:latest
+docker run -d \
+  --name dsa-server \
+  --env-file .env \
+  -p 8000:8000 \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/logs:/app/logs" \
+  -v "$(pwd)/reports:/app/reports" \
+  -v "$(pwd)/.env:/app/.env" \
+  zhulinsen/daily_stock_analysis:latest \
+  python main.py --serve-only --host 0.0.0.0 --port 8000
+
+# Scheduled-task mode
+docker run -d \
+  --name dsa-analyzer \
+  --env-file .env \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/logs:/app/logs" \
+  -v "$(pwd)/reports:/app/reports" \
+  -v "$(pwd)/.env:/app/.env" \
+  zhulinsen/daily_stock_analysis:latest
+```
+
+For pinned deployments or easier rollback, replace `latest` with a concrete version tag such as `v3.13.0`.
+
 ### Run Mode Description
 
 | Command | Description | Port |
@@ -341,17 +384,20 @@ docker-compose -f ./docker/docker-compose.yml logs -f server
 version: '3.8'
 
 x-common: &common
-  build: .
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile
   restart: unless-stopped
   env_file:
-    - .env
+    - ../.env
   environment:
     - TZ=Asia/Shanghai
   volumes:
-    - ./data:/app/data
-    - ./logs:/app/logs
-    - ./reports:/app/reports
-    - ./.env:/app/.env
+    - ../data:/app/data
+    - ../logs:/app/logs
+    - ../reports:/app/reports
+    - ../.env:/app/.env
+    - ../strategies:/app/strategies:ro
 
 services:
   # Scheduled task mode
@@ -363,10 +409,30 @@ services:
   server:
     <<: *common
     container_name: stock-server
-    command: ["python", "main.py", "--serve-only", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["python", "main.py", "--serve-only", "--host", "0.0.0.0", "--port", "${API_PORT:-8000}"]
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:${API_PORT:-8000}"
 ```
+
+### `.env` and Volume Mapping
+
+For both `docker run` and Compose, keep these two layers in mind:
+
+- Environment injection: `--env-file .env` or Compose `env_file`
+  This passes key/value pairs from `.env` into the container process environment.
+- File mapping: `-v "$(pwd)/.env:/app/.env"` or Compose `../.env:/app/.env`
+  This mounts the same `.env` file into the container so the Web settings page and backend read/write the same persisted config file.
+
+Recommended host mappings:
+
+- `./data:/app/data` for runtime data and database files
+- `./logs:/app/logs` for logs
+- `./reports:/app/reports` for generated reports
+- `./strategies:/app/strategies:ro` for custom strategy YAML files
+
+Optional static asset override:
+
+- `./static:/app/static:ro`
 
 ### Common Commands
 
@@ -388,8 +454,17 @@ docker-compose -f ./docker/docker-compose.yml up -d server
 ### Manual Image Build
 
 ```bash
-docker build -t stock-analysis .
-docker run -d --env-file .env -p 8000:8000 -v ./data:/app/data stock-analysis python main.py --serve-only --host 0.0.0.0 --port 8000
+docker build -f docker/Dockerfile -t stock-analysis .
+docker run -d \
+  --name dsa-server-local \
+  --env-file .env \
+  -p 8000:8000 \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/logs:/app/logs" \
+  -v "$(pwd)/reports:/app/reports" \
+  -v "$(pwd)/.env:/app/.env" \
+  stock-analysis \
+  python main.py --serve-only --host 0.0.0.0 --port 8000
 ```
 
 ---
@@ -676,9 +751,9 @@ GEMINI_MODEL=gemini-3-flash-preview
 
 # OpenAI compatible (backup)
 OPENAI_API_KEY=xxx
-OPENAI_BASE_URL=https://api.deepseek.com/v1
-OPENAI_MODEL=deepseek-chat
-# Thinking mode: deepseek-reasoner, deepseek-r1, qwq auto-detected; deepseek-chat enabled by model name
+OPENAI_BASE_URL=https://api.deepseek.com
+OPENAI_MODEL=deepseek-v4-flash
+# deepseek-chat / deepseek-reasoner remain compatible, but DeepSeek marks them deprecated after 2026/07/24
 ```
 
 ### Advanced Model Routing (Powered by LiteLLM)
@@ -778,7 +853,11 @@ Backtesting triggers automatically after the daily analysis flow completes (non-
 
 ---
 
-## FastAPI API Service
+## Local WebUI Management Interface
+
+The WebUI and FastAPI API share the same service process. After startup, use the browser workspace for configuration management, manual analysis, task progress, historical reports, backtesting, portfolio management, and smart import. Authentication, cloud-server access, and API usage details are covered below.
+
+### FastAPI API Service
 
 FastAPI provides RESTful API service for configuration management and triggering analysis.
 
@@ -806,6 +885,7 @@ FastAPI provides RESTful API service for configuration management and triggering
 | `/api/v1/analysis/tasks/stream` | GET (SSE) | Subscribe to realtime task updates |
 | `/api/v1/analysis/status/{task_id}` | GET | Query task status |
 | `/api/v1/history` | GET | Query analysis history |
+| `/api/v1/usage/summary?period=today|month|all` | GET | Query LLM call counts and token usage grouped by call type and model |
 | `/api/v1/backtest/run` | POST | Trigger backtest |
 | `/api/v1/backtest/results` | GET | Query backtest results (paginated) |
 | `/api/v1/backtest/performance` | GET | Get overall backtest performance |
@@ -816,6 +896,7 @@ FastAPI provides RESTful API service for configuration management and triggering
 > Note: `POST /api/v1/analysis/analyze` supports only one stock when `async_mode=false`; batch `stock_codes` requires `async_mode=true`. The async `202` response returns a single `task_id` for one stock, or an `accepted` / `duplicates` summary for batch requests.
 
 > Progress-stream note: `GET /api/v1/analysis/tasks/stream` now emits `task_progress` in addition to `task_created / task_started / task_completed / task_failed`. The regular analysis path updates `progress` and `message` across quote preparation, news retrieval, context assembly, LLM generation, and report persistence. Streaming chunks are accumulated only on the server side; history is persisted only after the final JSON parses successfully. If streaming is unavailable before the first chunk, the system falls back to the previous non-stream request. If a stream fails after partial output has already arrived, the system first retries non-stream for the same model, then continues through existing fallback models in the original order (primary + fallback list).
+> If a progress callback fails, the analysis flow continues, and the exception is now logged at warning level to help troubleshoot SSE delivery gaps.
 
 > Note: This behavior is documented in the full guide (`full-guide*.md`) because it is detailed runtime SSE/fallback behavior and is therefore kept out of the README.
 
@@ -831,6 +912,9 @@ curl -X POST http://127.0.0.1:8000/api/v1/analysis/analyze \
 
 # Query task status
 curl http://127.0.0.1:8000/api/v1/analysis/status/<task_id>
+
+# Query today's LLM usage
+curl "http://127.0.0.1:8000/api/v1/usage/summary?period=today"
 
 # Trigger backtest (all stocks)
 curl -X POST http://127.0.0.1:8000/api/v1/backtest/run \
@@ -900,6 +984,14 @@ A: Check if Actions is enabled, and if cron expression is correct (note it's UTC
 - The button calls the existing `POST /api/v1/portfolio/fx/refresh` endpoint and reloads snapshot/risk data only.
 - If upstream FX fetch fails, the page may still remain stale after refresh and will explain the fallback result inline.
 - When `PORTFOLIO_FX_UPDATE_ENABLED=false`, the refresh API returns an explicit disabled status and the page shows that online FX refresh is disabled instead of implying that no refreshable pairs exist.
+
+## Agent Tool Data Cache And Persistence
+
+- `get_daily_history` first tries to reuse local `stock_daily` daily-bar cache; when the cache is fresh and contains at least the dashboard default of 30 records, it avoids another external data-source request.
+- If Agent asks for more days than the local cache contains, the tool returns the available records and marks the response with `partial_cache=true`, `requested_days`, and `actual_records`.
+- When the cache is missing or stale, the tool keeps the original data-source fetch path; successful fetches are written back to `stock_daily` on a best-effort basis, and write failures do not block the Agent response.
+- `search_stock_news` and `search_comprehensive_intel` persist successful results to `news_intel` on a best-effort basis, reusing the existing URL / fallback-key deduplication logic.
+- `get_realtime_quote` does not use `stock_daily` as a realtime-quote cache and does not write intraday quotes into the daily-bar table; realtime quote caching should use a dedicated realtime store if needed.
 
 ---
 
